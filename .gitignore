@@ -1,0 +1,38 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.keystore
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+out/
+coverage/
+*.apk
+*.aab
+*.zip
+
+# Rokid Craft local/cache output
+.craft/
+craft/cache/
+craft/build/
+craft/output/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+.cache/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
