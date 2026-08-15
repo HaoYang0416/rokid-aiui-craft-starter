@@ -11,12 +11,14 @@
 
 1. 先在仓库根目录运行 `npm run dev:server`。
 2. 导入 `src/` 并打开 Interactive InkView。
-3. 使用模拟器录音能力，按“开启回声”。
-4. 等待缓冲计时增长。
+3. Interactive InkView 会显示“Craft 模拟模式”；按“开启回声”启动静音占位缓冲。
+4. 等待缓冲计时增长。这里验证的是交互流程，不是真实麦克风录音。
 5. 在设备面板派发语音唤醒，或发送 Enter / `GlobalHook`。
 6. 在相机面板上传图片或选择 Webcam 拍照。
 7. 确认界面依次显示“正在定格”“AI 正在回想”“回声已保存”。
-8. 检查 `server/data/<记录 ID>/` 中存在音频、照片和记录 JSON。
+8. 检查 `server/data/<记录 ID>/` 中存在静音占位 WAV、照片和记录 JSON，且 `record.json` 中的 `simulated` 为 `true`。
+
+真实录音需要在提供 `wx.media.getRecorderManager()` 的眼镜运行环境中验证；应用检测到该接口后会自动退出模拟模式并使用 PCM 帧。
 
 ## 真机地址
 
@@ -35,4 +37,3 @@ apiBaseUrl: 'http://电脑的局域网IP:8787'
 - 删除调试日志中的个人数据。
 - 录制一段“开启 → 等待 → 说回声 → 展示记忆卡片”的演示视频。
 - 根据真机结果更新 `docs/TEST_PLAN.md`。
-

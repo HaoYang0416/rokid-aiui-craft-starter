@@ -50,3 +50,31 @@ test('server saves an audio and photo capsule without exposing an API key', asyn
   const fetchedAudio = Buffer.from(await fetch(record.audioUrl).then((result) => result.arrayBuffer()));
   assert.deepEqual(fetchedAudio, audio);
 });
+
+test('server labels Craft simulator audio and does not claim it contains a recording', async (context) => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), 'echo-simulator-test-'));
+  const server = createEchoServer({ dataDirectory, openAiApiKey: '' });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  context.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dataDirectory, { recursive: true, force: true });
+  });
+
+  const address = server.address();
+  const response = await fetch(`http://127.0.0.1:${address.port}/api/echoes`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      triggerSource: 'craft-simulator',
+      durationSeconds: 1,
+      audioBase64: Buffer.from('RIFF-silence-placeholder').toString('base64'),
+      simulated: true,
+    }),
+  });
+
+  assert.equal(response.status, 201);
+  const record = await response.json();
+  assert.equal(record.simulated, true);
+  assert.match(record.summary, /静音占位/);
+});

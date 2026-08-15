@@ -142,7 +142,13 @@ async function transcribeAudio(audio, config) {
   return String(body.text || '').trim();
 }
 
-async function summarizeEcho({ transcript, photo, photoMimeType, durationSeconds }, config) {
+async function summarizeEcho(
+  { transcript, photo, photoMimeType, durationSeconds, simulated },
+  config,
+) {
+  const audioEvidence = simulated
+    ? '音频说明：Craft 模拟器未提供真实录音，本次音频文件为静音占位；不要推断任何对话或环境声音。'
+    : `录音转写：${transcript || '没有识别到清晰语音。'}`;
   const content = [
     {
       type: 'input_text',
@@ -152,7 +158,7 @@ async function summarizeEcho({ transcript, photo, photoMimeType, durationSeconds
         '请结合转写和触发时刻画面，用简洁中文写 2 到 3 句话。',
         '优先保留人名、数字、地点、约定、物品及下一步行动。',
         '只陈述证据能够支持的内容；听不清或看不清时明确说明，不要猜测。',
-        `录音转写：${transcript || '没有识别到清晰语音。'}`,
+        audioEvidence,
       ].join('\n'),
     },
   ];
@@ -225,6 +231,7 @@ function loadLocalEnvironment(filePath) {
 
 async function createEchoRecord(request, payload, config) {
   const audio = decodeBase64(payload.audioBase64, 'audioBase64');
+  const simulated = Boolean(payload.simulated);
   const photo = payload.photoBase64 ? decodeBase64(payload.photoBase64, 'photoBase64') : null;
   const photoMimeType = photo ? String(payload.photoMimeType || '') : '';
   const photoExtension = photo ? extensionForMimeType(photoMimeType) : '';
@@ -253,9 +260,11 @@ async function createEchoRecord(request, payload, config) {
 
   if (config.openAiApiKey) {
     try {
-      transcript = await transcribeAudio(audio, config);
+      if (!simulated) {
+        transcript = await transcribeAudio(audio, config);
+      }
       summary = await summarizeEcho(
-        { transcript, photo, photoMimeType, durationSeconds },
+        { transcript, photo, photoMimeType, durationSeconds, simulated },
         config,
       );
       aiStatus = 'complete';
@@ -266,9 +275,15 @@ async function createEchoRecord(request, payload, config) {
   }
 
   if (!summary) {
-    summary = config.openAiApiKey
-      ? '回声片段已经安全保存，但本次 AI 摘要生成失败，可以稍后重新处理。'
-      : '回声片段已经安全保存。配置服务端 OPENAI_API_KEY 后，将自动生成录音转写和画面摘要。';
+    if (simulated) {
+      summary = config.openAiApiKey
+        ? 'Craft 模拟片段已经保存，但本次画面摘要生成失败，可以稍后重新处理。'
+        : 'Craft 模拟片段已经保存，音频为静音占位。配置服务端 OPENAI_API_KEY 后可生成触发画面摘要。';
+    } else {
+      summary = config.openAiApiKey
+        ? '回声片段已经安全保存，但本次 AI 摘要生成失败，可以稍后重新处理。'
+        : '回声片段已经安全保存。配置服务端 OPENAI_API_KEY 后，将自动生成录音转写和画面摘要。';
+    }
   }
 
   const record = {
@@ -276,6 +291,7 @@ async function createEchoRecord(request, payload, config) {
     triggeredAt: triggeredAt.toISOString(),
     triggerSource: String(payload.triggerSource || 'unknown'),
     durationSeconds,
+    simulated,
     audioFile: 'audio.wav',
     photoFile: photo ? `photo${photoExtension}` : '',
     photoMimeType,
@@ -287,7 +303,7 @@ async function createEchoRecord(request, payload, config) {
       aiStatus === 'not_configured'
         ? null
         : {
-            transcription: config.transcribeModel,
+            transcription: simulated ? null : config.transcribeModel,
             summary: config.summaryModel,
           },
   };

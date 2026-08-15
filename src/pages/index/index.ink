@@ -34,6 +34,8 @@ function errorText(error) {
   return error.message || error.errMsg || String(error);
 }
 
+const SIMULATED_FRAME_MS = 500;
+
 export default {
   data: {
     phase: 'idle',
@@ -52,6 +54,8 @@ export default {
     audioUrl: '',
     savedAt: '',
     aiStatus: '',
+    simulatorMode: false,
+    modeBadge: '未触发即丢弃',
   },
 
   onLoad() {
@@ -111,15 +115,17 @@ export default {
         recorder = wx.getRecorderManager();
       }
     } catch (error) {
-      this.showError(`录音能力初始化失败：${errorText(error)}`);
+      console.warn('Echo recorder unavailable', errorText(error));
+      this.enableSimulatorMode();
       return;
     }
 
     if (!recorder) {
-      this.showError('当前环境没有提供录音能力');
+      this.enableSimulatorMode();
       return;
     }
 
+    this.simulatorMode = false;
     this.recorder = recorder;
     recorder.onStart(() => {
       this.setData({
@@ -181,6 +187,50 @@ export default {
     });
   },
 
+  enableSimulatorMode() {
+    this.simulatorMode = true;
+    this.recorder = null;
+    this.setData({
+      phase: 'idle',
+      phaseLabel: 'Craft 模拟模式',
+      helperText: '可验证触发、拍照与保存；真实录音需在眼镜上测试',
+      simulatorMode: true,
+      modeBadge: 'Craft 模拟音频',
+      lastError: '',
+    });
+  },
+
+  startSimulatedRecording() {
+    this.stopSimulatedRecording();
+    const bytesPerSecond =
+      ECHO_CONFIG.sampleRate * ECHO_CONFIG.channels * (ECHO_CONFIG.bitsPerSample / 8);
+    const silenceFrame = new ArrayBuffer(
+      Math.floor(bytesPerSecond * (SIMULATED_FRAME_MS / 1000)),
+    );
+
+    this.setData({
+      phase: 'armed',
+      phaseLabel: '模拟回听中',
+      helperText: '仅模拟一分钟计时；语音唤醒或按键可触发完整流程',
+      isArmed: true,
+      isBusy: false,
+      lastError: '',
+    });
+    this.simulationAudioTimer = setInterval(() => {
+      if (this.data.isArmed && !this.data.isBusy && this.audioBuffer) {
+        this.audioBuffer.append(silenceFrame);
+      }
+    }, SIMULATED_FRAME_MS);
+    this.startBufferMeter();
+  },
+
+  stopSimulatedRecording() {
+    if (this.simulationAudioTimer) {
+      clearInterval(this.simulationAudioTimer);
+      this.simulationAudioTimer = null;
+    }
+  },
+
   startBufferMeter() {
     this.stopBufferMeter();
     this.bufferMeter = setInterval(() => {
@@ -205,10 +255,6 @@ export default {
   },
 
   async armEcho() {
-    if (!this.recorder) {
-      this.showError('当前环境没有提供录音能力');
-      return;
-    }
     if (this.data.isArmed || this.data.isBusy) {
       return;
     }
@@ -217,8 +263,8 @@ export default {
     this.pendingEcho = null;
     this.setData({
       phase: 'starting',
-      phaseLabel: '正在开启',
-      helperText: '请允许麦克风访问',
+      phaseLabel: this.simulatorMode ? '正在开启模拟' : '正在开启',
+      helperText: this.simulatorMode ? '准备静音占位缓冲' : '请允许麦克风访问',
       bufferedSeconds: 0,
       bufferLabel: '00:00',
       isBusy: true,
@@ -232,6 +278,16 @@ export default {
       aiStatus: '',
     });
 
+    if (this.simulatorMode) {
+      this.startSimulatedRecording();
+      return;
+    }
+
+    if (!this.recorder) {
+      this.showError('当前环境没有提供录音能力');
+      return;
+    }
+
     try {
       await this.recorder.start({
         sampleRate: ECHO_CONFIG.sampleRate,
@@ -244,6 +300,7 @@ export default {
   },
 
   async disarmEcho(options = {}) {
+    this.stopSimulatedRecording();
     this.stopBufferMeter();
     if (this.recorder && (this.data.isArmed || this.data.phase === 'starting')) {
       this.stopReason = 'privacy';
@@ -315,10 +372,15 @@ export default {
     });
 
     this.stopReason = 'capture';
-    try {
-      await this.recorder.stop();
-    } catch (error) {
-      console.warn('Echo recorder stop failed', errorText(error));
+    if (this.simulatorMode) {
+      this.stopSimulatedRecording();
+      this.stopBufferMeter();
+    } else {
+      try {
+        await this.recorder.stop();
+      } catch (error) {
+        console.warn('Echo recorder stop failed', errorText(error));
+      }
     }
 
     try {
@@ -337,6 +399,7 @@ export default {
         audioBase64: wx.arrayBufferToBase64(wav),
         photoMimeType: photo && photo.mimeType ? photo.mimeType : '',
         photoBase64: photo && photo.data ? wx.arrayBufferToBase64(photo.data) : '',
+        simulated: this.simulatorMode,
       };
       await this.uploadPendingEcho();
     } catch (error) {
@@ -353,7 +416,7 @@ export default {
     this.setData({
       phase: 'processing',
       phaseLabel: 'AI 正在回想',
-      helperText: '转写声音并理解触发画面',
+      helperText: this.simulatorMode ? '保存模拟片段并理解触发画面' : '转写声音并理解触发画面',
       isBusy: true,
       canRetry: false,
       lastError: '',
@@ -368,7 +431,9 @@ export default {
       this.setData({
         phase: 'saved',
         phaseLabel: '回声已保存',
-        helperText: '按一次可开启下一段回溯',
+        helperText: this.simulatorMode
+          ? 'Craft 流程已验证；真实录音请在眼镜上测试'
+          : '按一次可开启下一段回溯',
         isBusy: false,
         canRetry: false,
         summary: result.summary || '片段已保存，暂时没有生成摘要。',
@@ -447,7 +512,7 @@ export default {
   <view class="page-shell">
     <view class="top-row">
       <text class="brand">回声 ECHO</text>
-      <text class="privacy">未触发即丢弃</text>
+      <text class="privacy">{{modeBadge}}</text>
     </view>
 
     <view class="memory-orb {{isArmed ? 'memory-orb-armed' : ''}}">
@@ -486,7 +551,7 @@ export default {
         mode="aspectFit"
       ></image>
       <view class="result-copy">
-        <text class="result-meta">{{savedAt}} · {{triggerLabel}}</text>
+        <text class="result-meta">{{savedAt}} · {{triggerLabel}}{{simulatorMode ? ' · 模拟音频' : ''}}</text>
         <text class="summary">{{summary}}</text>
         <text class="transcript" ink:if="{{transcript}}">“{{transcript}}”</text>
       </view>
@@ -496,7 +561,7 @@ export default {
       <text class="error-text">{{lastError}}</text>
     </view>
 
-    <text class="footnote" ink:if="{{isArmed}}">语音唤醒或 Enter / 镜腿键均可触发</text>
+    <text class="footnote" ink:if="{{isArmed}}">{{simulatorMode ? 'Craft 未录入真实声音；语音唤醒或按键可触发' : '语音唤醒或 Enter / 镜腿键均可触发'}}</text>
   </view>
 </page>
 

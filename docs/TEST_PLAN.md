@@ -5,6 +5,7 @@
 | Area | Scenario | Expected result | Craft | Device | Status |
 |---|---|---|---|---|---|
 | Launch | 首次启动 | 显示“尚未开启”，不会自动录音 | 待测 | 待测 | Not run |
+| Craft fallback | Interactive InkView 不提供 RecorderManager | 明确显示“Craft 模拟模式”，可完成计时、触发、拍照和保存；不声称录到真实声音 | 待测 | N/A | Not run |
 | Permission | 点击开启并允许麦克风 | 进入“正在回听”，缓冲计时增长 | 待测 | 待测 | Not run |
 | Permission | 拒绝麦克风 | 给出可恢复错误，不上传任何数据 | 待测 | 待测 | Not run |
 | Buffer | 连续录音 75 秒 | 缓冲显示封顶 01:00，只保存最后 60 秒 | 待测 | 待测 | Not run |
@@ -36,4 +37,3 @@
 - 10 分钟持续录音的电量下降与镜腿温度体感
 - 语音唤醒到拍照调用、拍照完成、上传完成、摘要完成的时间
 - 一分钟 WAV 实际大小和触发照片大小
-
