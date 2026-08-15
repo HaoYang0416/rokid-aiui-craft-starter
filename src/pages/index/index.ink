@@ -13,9 +13,10 @@
 
 <script setup>
 import wx from 'wx';
+import { LanguageModel } from 'language-model';
 import { ECHO_CONFIG } from '../../config.js';
 import { RollingPcmBuffer, pcm16ToWav } from '../../lib/rolling-audio.js';
-import { saveEchoCapsule } from '../../lib/echo-api.js';
+import { saveEchoCapsule, saveEchoSummary } from '../../lib/echo-api.js';
 
 function formatSeconds(value) {
   const seconds = Math.max(0, Math.min(ECHO_CONFIG.rewindSeconds, Math.floor(value || 0)));
@@ -54,6 +55,7 @@ export default {
     audioUrl: '',
     savedAt: '',
     aiStatus: '',
+    summarySourceLabel: '',
     simulatorMode: false,
     modeBadge: '未触发即丢弃',
   },
@@ -276,6 +278,7 @@ export default {
       audioUrl: '',
       savedAt: '',
       aiStatus: '',
+      summarySourceLabel: '',
     });
 
     if (this.simulatorMode) {
@@ -424,11 +427,40 @@ export default {
     });
 
     try {
+      const pendingEcho = this.pendingEcho;
       const result = await saveEchoCapsule({
         apiBaseUrl: ECHO_CONFIG.apiBaseUrl,
         timeout: ECHO_CONFIG.requestTimeoutMs,
-        payload: this.pendingEcho,
+        payload: pendingEcho,
       });
+
+      let hostSummary = '';
+      try {
+        hostSummary = await this.summarizeWithDefaultModel(result, pendingEcho);
+      } catch (error) {
+        console.warn('Echo default LLM unavailable', errorText(error));
+      }
+
+      if (hostSummary && result.id) {
+        try {
+          await saveEchoSummary({
+            apiBaseUrl: ECHO_CONFIG.apiBaseUrl,
+            timeout: ECHO_CONFIG.requestTimeoutMs,
+            recordId: result.id,
+            summary: hostSummary,
+            source: 'rokid-default-llm',
+          });
+        } catch (error) {
+          console.warn('Echo summary persistence failed', errorText(error));
+        }
+      }
+
+      const finalSummary = hostSummary || result.summary || '片段已保存，暂时没有生成摘要。';
+      const summarySourceLabel = hostSummary
+        ? ' · Rokid 默认 LLM'
+        : result.aiStatus === 'complete'
+          ? ' · 伴随服务 AI'
+          : '';
       this.setData({
         phase: 'saved',
         phaseLabel: '回声已保存',
@@ -437,18 +469,80 @@ export default {
           : '按一次可开启下一段回溯',
         isBusy: false,
         canRetry: false,
-        summary: result.summary || '片段已保存，暂时没有生成摘要。',
+        summary: finalSummary,
         transcript: result.transcript || '',
         photoUrl: result.photoUrl || '',
         audioUrl: result.audioUrl || '',
-        savedAt: formatSavedAt(result.triggeredAt || this.pendingEcho.triggeredAt),
-        aiStatus: result.aiStatus || '',
+        savedAt: formatSavedAt(result.triggeredAt || pendingEcho.triggeredAt),
+        aiStatus: hostSummary ? 'complete' : result.aiStatus || '',
+        summarySourceLabel,
       });
       this.pendingEcho = null;
       this.audioBuffer.clear();
       this.refreshBufferMeter();
     } catch (error) {
       this.showSaveError(error);
+    }
+  },
+
+  async summarizeWithDefaultModel(result, pendingEcho) {
+    if (
+      typeof LanguageModel.availability !== 'function' ||
+      typeof LanguageModel.create !== 'function'
+    ) {
+      return '';
+    }
+
+    const availability = await LanguageModel.availability();
+    if (availability !== 'available') {
+      return '';
+    }
+
+    const session = await LanguageModel.create({
+      initialPrompts: [
+        {
+          role: 'system',
+          content: [
+            '你是“回声 Echo”第一视角记忆助手。',
+            '请用简洁中文写 2 到 3 句话，优先保留人名、数字、地点、约定、物品和下一步行动。',
+            '只陈述转写和画面能够支持的内容；不清楚时明确说明，绝不猜测。',
+          ].join('\n'),
+        },
+      ],
+    });
+
+    try {
+      const transcript = String(result.transcript || '').trim();
+      const audioEvidence = pendingEcho.simulated
+        ? '音频说明：Craft 模拟器只生成静音占位，没有真实录音，不得推断声音或对话。'
+        : transcript
+          ? `录音转写：${transcript}`
+          : '录音说明：本次没有可用转写，只能根据触发时刻画面总结。';
+      const content = [
+        {
+          type: 'text',
+          text: [
+            `以下证据来自用户触发前约 ${Math.round(pendingEcho.durationSeconds || 0)} 秒。`,
+            audioEvidence,
+          ].join('\n'),
+        },
+      ];
+
+      if (pendingEcho.photoBase64 && pendingEcho.photoMimeType) {
+        content.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${pendingEcho.photoMimeType};base64,${pendingEcho.photoBase64}`,
+          },
+        });
+      }
+
+      const summary = await session.prompt([{ role: 'user', content }]);
+      return typeof summary === 'string' ? summary.trim() : '';
+    } finally {
+      if (session && typeof session.destroy === 'function') {
+        session.destroy();
+      }
     }
   },
 
@@ -552,7 +646,7 @@ export default {
         mode="aspectFit"
       ></image>
       <view class="result-copy">
-        <text class="result-meta">{{savedAt}} · {{triggerLabel}}{{simulatorMode ? ' · 模拟音频' : ''}}</text>
+        <text class="result-meta">{{savedAt}} · {{triggerLabel}}{{simulatorMode ? ' · 模拟音频' : ''}}{{summarySourceLabel}}</text>
         <text class="summary">{{summary}}</text>
         <text class="transcript" ink:if="{{transcript}}">“{{transcript}}”</text>
       </view>

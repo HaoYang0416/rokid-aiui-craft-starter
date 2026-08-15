@@ -13,6 +13,10 @@ test('AIUI page contains valid JSON metadata and JavaScript syntax', async (cont
   assert.ok(definition, 'missing script def block');
   assert.ok(setup, 'missing script setup block');
   assert.doesNotThrow(() => JSON.parse(definition[1]));
+  assert.match(setup[1], /import \{ LanguageModel \} from 'language-model'/);
+  assert.match(setup[1], /LanguageModel\.availability\(\)/);
+  assert.match(setup[1], /LanguageModel\.create\(\{/);
+  assert.match(setup[1], /session\.destroy\(\)/);
 
   const directory = await mkdtemp(join(tmpdir(), 'echo-ink-check-'));
   const scriptPath = join(directory, 'index.mjs');

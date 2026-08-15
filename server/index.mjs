@@ -312,6 +312,7 @@ async function createEchoRecord(request, payload, config) {
     photoMimeType,
     transcript,
     summary,
+    summarySource: aiStatus === 'complete' ? 'companion-service' : '',
     aiStatus,
     aiError,
     models:
@@ -333,6 +334,43 @@ async function createEchoRecord(request, payload, config) {
     photoUrl: photo ? `${baseUrl}/api/echoes/${id}/photo` : '',
     recordUrl: `${baseUrl}/api/echoes/${id}`,
   };
+}
+
+async function updateEchoSummary(payload, config, id) {
+  const summary = String(payload.summary || '').trim();
+  if (!summary) {
+    throw Object.assign(new Error('summary 不能为空'), { statusCode: 400 });
+  }
+  if (summary.length > 8000) {
+    throw Object.assign(new Error('summary 不能超过 8000 个字符'), { statusCode: 400 });
+  }
+
+  const source = String(payload.source || 'rokid-default-llm').trim().slice(0, 100);
+  const { record, recordDirectory } = await readRecord(config.dataDirectory, id);
+  record.summary = summary;
+  record.summarySource = source;
+  record.aiStatus = 'complete';
+  record.aiError = '';
+  record.models = {
+    ...(record.models || {}),
+    hostSummary: source === 'rokid-default-llm' ? 'default' : source,
+  };
+
+  await writeFile(join(recordDirectory, 'record.json'), JSON.stringify(record, null, 2), 'utf8');
+
+  const latestPath = join(config.dataDirectory, 'latest.json');
+  try {
+    const latest = JSON.parse(await readFile(latestPath, 'utf8'));
+    if (latest.id === record.id) {
+      await writeFile(latestPath, JSON.stringify(record, null, 2), 'utf8');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
+  return record;
 }
 
 function safeRecordId(value) {
@@ -374,6 +412,14 @@ export function createEchoServer(overrides = {}) {
         const payload = await readJsonBody(request, config.bodyLimit);
         const result = await createEchoRecord(request, payload, config);
         sendJson(response, 201, result);
+        return;
+      }
+
+      const summaryMatch = url.pathname.match(/^\/api\/echoes\/([^/]+)\/summary$/);
+      if (request.method === 'POST' && summaryMatch) {
+        const payload = await readJsonBody(request, config.bodyLimit);
+        const result = await updateEchoSummary(payload, config, summaryMatch[1]);
+        sendJson(response, 200, result);
         return;
       }
 
