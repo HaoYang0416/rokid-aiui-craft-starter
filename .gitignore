@@ -23,11 +23,16 @@ craft/cache/
 craft/build/
 craft/output/
 
+# Echo runtime records
+server/data/*
+!server/data/.gitkeep
+
 # Logs and temporary files
 *.log
 *.tmp
 *.temp
 .cache/
+work/
 
 # Editors and operating systems
 .idea/
@@ -35,4 +40,3 @@ craft/output/
 .DS_Store
 Thumbs.db
 Desktop.ini
-

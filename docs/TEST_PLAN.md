@@ -1,11 +1,39 @@
-# Test plan
+# 回声 Echo 测试计划
 
-Record the Craft simulator version, target device model, application version, test date, result, and evidence for every release candidate.
+每轮测试记录 Craft 版本、眼镜型号、系统版本、应用版本、日期和证据。
 
-| Area | Scenario | Expected result | Simulator | Device | Status |
+| Area | Scenario | Expected result | Craft | Device | Status |
 |---|---|---|---|---|---|
-| Launch | First launch | App opens and presents a clear next action | TBD | TBD | Not run |
-| Input | Valid user input | Feedback appears within an acceptable time | TBD | TBD | Not run |
-| Network | Request timeout | Recoverable message and retry path are shown | TBD | TBD | Not run |
-| Privacy | Permission denied | App explains impact without blocking unrelated use | TBD | TBD | Not run |
+| Launch | 首次启动 | 显示“尚未开启”，不会自动录音 | 待测 | 待测 | Not run |
+| Permission | 点击开启并允许麦克风 | 进入“正在回听”，缓冲计时增长 | 待测 | 待测 | Not run |
+| Permission | 拒绝麦克风 | 给出可恢复错误，不上传任何数据 | 待测 | 待测 | Not run |
+| Buffer | 连续录音 75 秒 | 缓冲显示封顶 01:00，只保存最后 60 秒 | 待测 | 待测 | Not run |
+| Stability | 连续运行 10 分钟 | 不崩溃，内存不持续增长 | 待测 | 待测 | Not run |
+| Voice | 说“Rokid，回声” | 触发一次保存，不重复触发 | 待测 | 待测 | Not run |
+| Key | Enter / GlobalHook | 与语音触发进入相同保存流程 | 待测 | 待测 | Not run |
+| Camera | 拍照成功 | 保存触发照片并显示在结果卡片 | 待测 | 待测 | Not run |
+| Camera | 拍照失败 | 音频仍保存，摘要按纯音频降级 | 待测 | 待测 | Not run |
+| AI | 中文人名与数字 | 转写和摘要保留关键信息且不编造 | 待测 | 待测 | Not run |
+| Network | 服务不可达 | 显示“保存未完成”，允许重试 | 待测 | 待测 | Not run |
+| Retry | 网络恢复后重试 | 同一片段成功保存，不要求重新录音 | 待测 | 待测 | Not run |
+| Privacy | 点击停止并清除 | 缓冲归零，服务端没有新增记录 | 待测 | 待测 | Not run |
+| Privacy | 页面切入后台 | 未触发缓冲停止并清空 | 待测 | 待测 | Not run |
+| Interrupt | 电话/TTS/系统占用麦克风 | 显示中断状态，可由用户重新开启 | 待测 | 待测 | Not run |
+
+## 自动测试
+
+运行 `npm test`，当前覆盖：
+
+- 环形缓冲只保留最新窗口
+- PCM16 WAV 文件头与数据长度
+- AIUI `.ink` 配置与 JavaScript 语法
+- 无 AI Key 时仍可保存音频和照片
+- 已保存音频可通过服务 URL 读取
+
+## 必须记录的性能数据
+
+- 1、5、10 分钟时的进程内存
+- 10 分钟持续录音的电量下降与镜腿温度体感
+- 语音唤醒到拍照调用、拍照完成、上传完成、摘要完成的时间
+- 一分钟 WAV 实际大小和触发照片大小
 
