@@ -36,6 +36,8 @@ function errorText(error) {
 }
 
 const SIMULATED_FRAME_MS = 500;
+const RECORDER_START_TIMEOUT_MS = 10000;
+const RECORDER_FRAME_TIMEOUT_MS = 6000;
 
 export default {
   data: {
@@ -88,6 +90,7 @@ export default {
   },
 
   onUnload() {
+    this.clearRecorderWatchdogs();
     this.disarmEcho({ silent: true });
     this.cameraCtx = null;
     this.pendingEcho = null;
@@ -130,19 +133,19 @@ export default {
     this.simulatorMode = false;
     this.recorder = recorder;
     recorder.onStart(() => {
-      this.setData({
-        phase: 'armed',
-        phaseLabel: '正在回听',
-        helperText: '说“Rokid，回声”保存刚才一分钟',
-        isArmed: true,
-        isBusy: false,
-        lastError: '',
-      });
-      this.startBufferMeter();
+      this.confirmRecorderStarted('onStart');
     });
 
     recorder.onFrameRecorded((payload) => {
-      if (!this.data.isArmed || !this.audioBuffer || !payload || !payload.frameBuffer) {
+      if (!this.audioBuffer || !payload || !payload.frameBuffer) {
+        return;
+      }
+      if (this.data.phase === 'starting' && !this.data.isArmed) {
+        this.confirmRecorderStarted('firstFrame');
+      }
+      this.receivedRecorderFrame = true;
+      this.clearRecorderFrameWatchdog();
+      if (!this.data.isArmed) {
         return;
       }
       try {
@@ -153,6 +156,7 @@ export default {
     });
 
     recorder.onError((payload) => {
+      this.clearRecorderWatchdogs();
       this.stopBufferMeter();
       this.showError(`录音失败：${(payload && payload.errMsg) || '未知错误'}`);
     });
@@ -174,8 +178,9 @@ export default {
     });
 
     recorder.onStop(() => {
+      this.clearRecorderWatchdogs();
       this.stopBufferMeter();
-      if (this.stopReason === 'capture' || this.stopReason === 'privacy') {
+      if (this.stopReason) {
         this.stopReason = '';
         return;
       }
@@ -187,6 +192,87 @@ export default {
         isBusy: false,
       });
     });
+  },
+
+  confirmRecorderStarted(signal) {
+    if (this.data.phase !== 'starting' || this.data.isArmed) {
+      return;
+    }
+    this.clearRecorderStartWatchdog();
+    this.setData({
+      phase: 'armed',
+      phaseLabel: '正在回听',
+      helperText: '说“Rokid，回声”保存刚才一分钟',
+      isArmed: true,
+      isBusy: false,
+      lastError: '',
+    });
+    console.log(`Echo recorder started via ${signal}`);
+    this.startBufferMeter();
+
+    if (!this.receivedRecorderFrame) {
+      this.clearRecorderFrameWatchdog();
+      this.recorderFrameWatchdog = setTimeout(() => {
+        this.handleRecorderFrameTimeout();
+      }, RECORDER_FRAME_TIMEOUT_MS);
+    }
+  },
+
+  clearRecorderStartWatchdog() {
+    if (this.recorderStartWatchdog) {
+      clearTimeout(this.recorderStartWatchdog);
+      this.recorderStartWatchdog = null;
+    }
+  },
+
+  clearRecorderFrameWatchdog() {
+    if (this.recorderFrameWatchdog) {
+      clearTimeout(this.recorderFrameWatchdog);
+      this.recorderFrameWatchdog = null;
+    }
+  },
+
+  clearRecorderWatchdogs() {
+    this.clearRecorderStartWatchdog();
+    this.clearRecorderFrameWatchdog();
+  },
+
+  stopRecorderAfterStartupFailure(reason) {
+    this.stopReason = reason;
+    if (this.recorder && typeof this.recorder.stop === 'function') {
+      try {
+        const stopResult = this.recorder.stop();
+        if (stopResult && typeof stopResult.catch === 'function') {
+          stopResult.catch(() => {
+            this.stopReason = '';
+          });
+        }
+      } catch (_) {
+        this.stopReason = '';
+      }
+    }
+  },
+
+  handleRecorderStartTimeout() {
+    if (this.data.phase !== 'starting' || this.data.isArmed) {
+      return;
+    }
+    this.clearRecorderWatchdogs();
+    this.stopRecorderAfterStartupFailure('start-timeout');
+    this.showError(
+      '录音启动超时：宿主没有返回启动事件。请在眼镜系统设置中允许 AIUI/Craft 使用麦克风；若已允许，请用官方 Recorder Test 验证当前固件的原始录音能力。',
+    );
+  },
+
+  handleRecorderFrameTimeout() {
+    if (!this.data.isArmed || this.receivedRecorderFrame) {
+      return;
+    }
+    this.clearRecorderWatchdogs();
+    this.stopRecorderAfterStartupFailure('frame-timeout');
+    this.showError(
+      '录音已启动，但没有收到 PCM 音频帧。当前眼镜宿主可能未开放原始录音，请用官方 Recorder Test 验证。',
+    );
   },
 
   enableSimulatorMode() {
@@ -262,11 +348,16 @@ export default {
     }
 
     this.audioBuffer.clear();
+    this.clearRecorderWatchdogs();
+    this.receivedRecorderFrame = false;
+    this.stopReason = '';
     this.pendingEcho = null;
     this.setData({
       phase: 'starting',
       phaseLabel: this.simulatorMode ? '正在开启模拟' : '正在开启',
-      helperText: this.simulatorMode ? '准备静音占位缓冲' : '请允许麦克风访问',
+      helperText: this.simulatorMode
+        ? '准备静音占位缓冲'
+        : '正在请求真机录音能力（最多等待 10 秒）',
       bufferedSeconds: 0,
       bufferLabel: '00:00',
       isBusy: true,
@@ -292,17 +383,26 @@ export default {
     }
 
     try {
-      await this.recorder.start({
+      this.recorderStartWatchdog = setTimeout(() => {
+        this.handleRecorderStartTimeout();
+      }, RECORDER_START_TIMEOUT_MS);
+      const startResult = this.recorder.start({
         sampleRate: ECHO_CONFIG.sampleRate,
         numberOfChannels: ECHO_CONFIG.channels,
         format: 'pcm',
       });
+      if (startResult && typeof startResult.then === 'function') {
+        await startResult;
+        this.confirmRecorderStarted('startPromise');
+      }
     } catch (error) {
+      this.clearRecorderWatchdogs();
       this.showError(`无法开启回声：${errorText(error)}`);
     }
   },
 
   async disarmEcho(options = {}) {
+    this.clearRecorderWatchdogs();
     this.stopSimulatedRecording();
     this.stopBufferMeter();
     if (this.recorder && (this.data.isArmed || this.data.phase === 'starting')) {

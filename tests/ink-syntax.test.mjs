@@ -17,6 +17,9 @@ test('AIUI page contains valid JSON metadata and JavaScript syntax', async (cont
   assert.match(setup[1], /LanguageModel\.availability\(\)/);
   assert.match(setup[1], /LanguageModel\.create\(\{/);
   assert.match(setup[1], /session\.destroy\(\)/);
+  assert.match(setup[1], /RECORDER_START_TIMEOUT_MS = 10000/);
+  assert.match(setup[1], /confirmRecorderStarted\('firstFrame'\)/);
+  assert.match(setup[1], /handleRecorderFrameTimeout\(\)/);
 
   const directory = await mkdtemp(join(tmpdir(), 'echo-ink-check-'));
   const scriptPath = join(directory, 'index.mjs');

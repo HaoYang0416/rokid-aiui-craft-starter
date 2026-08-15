@@ -8,6 +8,8 @@
 | Craft fallback | Interactive InkView 不提供 RecorderManager | 明确显示“Craft 模拟模式”，可完成计时、触发、拍照和保存；不声称录到真实声音 | 待测 | N/A | Not run |
 | Permission | 点击开启并允许麦克风 | 进入“正在回听”，缓冲计时增长 | 待测 | 待测 | Not run |
 | Permission | 拒绝麦克风 | 给出可恢复错误，不上传任何数据 | 待测 | 待测 | Not run |
+| Recorder startup | 宿主不返回 `onStart`/`onError` | 10 秒内退出“正在开启”并显示权限/官方 Recorder Test 诊断，不永久卡住 | 待测 | 待测 | Not run |
+| Recorder frames | 已启动但不提供 PCM 帧 | 6 秒内停止并明确提示当前宿主可能未开放原始录音 | 待测 | 待测 | Not run |
 | Buffer | 连续录音 75 秒 | 缓冲显示封顶 01:00，只保存最后 60 秒 | 待测 | 待测 | Not run |
 | Stability | 连续运行 10 分钟 | 不崩溃，内存不持续增长 | 待测 | 待测 | Not run |
 | Voice | 说“Rokid，回声” | 触发一次保存，不重复触发 | 待测 | 待测 | Not run |
