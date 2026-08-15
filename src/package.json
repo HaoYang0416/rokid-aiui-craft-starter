@@ -1,0 +1,11 @@
+{
+  "name": "echo-rokid-aiui",
+  "version": "0.1.0",
+  "description": "回声 Echo：Rokid AIUI 一分钟回溯 demo",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "start": "jsui start"
+  },
+  "dependencies": {}
+}

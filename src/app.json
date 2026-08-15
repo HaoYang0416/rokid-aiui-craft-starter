@@ -1,0 +1,11 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "回声 Echo",
+    "viewport": {
+      "width": "device-width"
+    }
+  }
+}

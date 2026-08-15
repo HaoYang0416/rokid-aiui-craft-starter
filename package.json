@@ -1,0 +1,14 @@
+{
+  "name": "echo-rokid-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "回声 Echo：Rokid AIUI 一分钟回溯 demo 与本地伴随服务",
+  "scripts": {
+    "dev:server": "node server/index.mjs",
+    "test": "node --test tests/rolling-audio.test.mjs tests/server.test.mjs tests/ink-syntax.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
