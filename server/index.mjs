@@ -229,6 +229,22 @@ function loadLocalEnvironment(filePath) {
   }
 }
 
+function parseTriggeredAt(value) {
+  if (value === undefined || value === null || value === '') {
+    return { date: new Date(), source: 'server' };
+  }
+
+  let candidate = value;
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    candidate = Number(value);
+  }
+  const date = new Date(candidate);
+  if (Number.isNaN(date.getTime())) {
+    return { date: new Date(), source: 'server_fallback' };
+  }
+  return { date, source: 'client' };
+}
+
 async function createEchoRecord(request, payload, config) {
   const audio = decodeBase64(payload.audioBase64, 'audioBase64');
   const simulated = Boolean(payload.simulated);
@@ -239,10 +255,8 @@ async function createEchoRecord(request, payload, config) {
     throw Object.assign(new Error('仅支持 JPEG、PNG 或 WebP 触发照片'), { statusCode: 400 });
   }
 
-  const triggeredAt = payload.triggeredAt ? new Date(payload.triggeredAt) : new Date();
-  if (Number.isNaN(triggeredAt.getTime())) {
-    throw Object.assign(new Error('triggeredAt 无效'), { statusCode: 400 });
-  }
+  const parsedTriggeredAt = parseTriggeredAt(payload.triggeredAt);
+  const triggeredAt = parsedTriggeredAt.date;
 
   const durationSeconds = Math.max(0, Math.min(60, Number(payload.durationSeconds) || 0));
   const id = `${triggeredAt.toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`;
@@ -289,6 +303,7 @@ async function createEchoRecord(request, payload, config) {
   const record = {
     id,
     triggeredAt: triggeredAt.toISOString(),
+    timestampSource: parsedTriggeredAt.source,
     triggerSource: String(payload.triggerSource || 'unknown'),
     durationSeconds,
     simulated,

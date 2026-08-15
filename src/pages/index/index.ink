@@ -390,7 +390,8 @@ export default {
         channels: ECHO_CONFIG.channels,
         bitsPerSample: ECHO_CONFIG.bitsPerSample,
       });
-      const triggeredAt = new Date().toISOString();
+      // Craft 的 Date 字符串实现可能不是 Node 可解析的 ISO 格式；跨运行时传 Unix 毫秒值。
+      const triggeredAt = Date.now();
       this.pendingEcho = {
         triggeredAt,
         triggerSource: source,

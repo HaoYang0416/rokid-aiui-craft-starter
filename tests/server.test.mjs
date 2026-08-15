@@ -67,6 +67,7 @@ test('server labels Craft simulator audio and does not claim it contains a recor
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       triggerSource: 'craft-simulator',
+      triggeredAt: 'Craft Invalid Date',
       durationSeconds: 1,
       audioBase64: Buffer.from('RIFF-silence-placeholder').toString('base64'),
       simulated: true,
@@ -76,5 +77,7 @@ test('server labels Craft simulator audio and does not claim it contains a recor
   assert.equal(response.status, 201);
   const record = await response.json();
   assert.equal(record.simulated, true);
+  assert.equal(record.timestampSource, 'server_fallback');
+  assert.equal(Number.isNaN(Date.parse(record.triggeredAt)), false);
   assert.match(record.summary, /静音占位/);
 });
